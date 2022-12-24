@@ -20,8 +20,8 @@ PUBLIC_KEY_B = None
 
 def printMenuOptions():
     print("Options:")
-    print("\t Enter 'quit' to exit")
     print("\t Enter 'connect' to connect to server")
+    print("\t Enter 'quit' to exit")
 
 
 def random10bit():
@@ -76,6 +76,7 @@ if __name__ == '__main__':
     while True:
         printMenuOptions()
         message = input(" -> ")
+        conn.send(message.encode())
 
         if 'connect' in message :
             # STEP 1

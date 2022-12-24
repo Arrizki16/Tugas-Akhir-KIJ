@@ -24,6 +24,12 @@ def nonceGenerator():
 	return num
 
 
+def receive_input(conn):
+    client_input = conn.recv(4096)
+    client_input = client_input.decode().rstrip()
+    return client_input
+
+
 def getAPublicKey(b_pem):
     b_pem = b_pem.decode("utf-8")
     b64data = '\n'.join(b_pem.splitlines()[1:-1])
@@ -71,33 +77,43 @@ def handle_client(conn, addr, client_id):
     )
     conn.send(public_key_pem)
 
-    encryptedMessage1 = conn.recv(2048)
-    n1 = getn1(encryptedMessage1)
-    N2 = nonceGenerator()
-    content = (n1 + N2).encode()
+    while True:
+        client_input = receive_input(conn)
+        if "quit" in client_input:
+            CONNECTIONS[conn.getpeername()] = None
+            conn.close()
+            print("[DISC]   Client", client_id, "disconnected.")
+            break
 
-    a_pem = conn.recv(2048)
-    PUBLIC_KEY_A = getAPublicKey(a_pem)
+        elif "connect" in client_input:
+            encryptedMessage1 = conn.recv(2048)
+            n1 = getn1(encryptedMessage1)
+            N2 = nonceGenerator()
+            content = (n1 + N2).encode()
 
-    encryptedMessage2 = PUBLIC_KEY_A.encrypt(
-        content,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
+            a_pem = conn.recv(2048)
+            PUBLIC_KEY_A = getAPublicKey(a_pem)
 
-    print("[SEND]   Sending encrypted message to ", client_id)
-    conn.send(encryptedMessage2)
+            encryptedMessage2 = PUBLIC_KEY_A.encrypt(
+                content,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None
+                )
+            )
+            
+            print("[SEND]   Sending encrypted message to ", client_id)
+            conn.send(encryptedMessage2)
 
-    encryptedMessage3 = conn.recv(2048)
-    n2_from_client = getN2fromA(encryptedMessage3)
+            encryptedMessage3 = conn.recv(2048)
+            n2_from_client = getN2fromA(encryptedMessage3)
 
-    if n2_from_client == N2:
-        print("[SUCCESS]    Authentication is successful")
-    else :
-        print("[FAILED]     Authentication fails")
+            if n2_from_client == N2:
+                print("[SUCCESS]    Authentication is successful")
+            else :
+                print("[FAILED]     Authentication fails")
+                conn.close
 
 
 def start():
