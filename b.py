@@ -1,4 +1,4 @@
-import socket, random, base64
+import socket, random, base64, traceback
 from threading import Thread
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -111,9 +111,11 @@ def handle_client(conn, addr, client_id):
 
             if n2_from_client == N2:
                 print("[SUCCESS]    Authentication is successful")
+                conn.send("VERIFIED".encode())
+
             else :
                 print("[FAILED]     Authentication fails")
-                conn.close
+                conn.close()
 
 
 def start():
@@ -135,10 +137,15 @@ def start():
             new_id = str(no_of_connection).zfill(8)
             CONNECTIONS[conn.getpeername()] = new_id
 
-        Thread(
-            target=handle_client,
-            args=(conn, addr, new_id)
-        ).start()
+        try:
+            Thread(
+                target=handle_client, 
+                args=(conn, addr, new_id)
+            ).start()
+
+        except:
+            print("Thread did not start.")
+            traceback.print_exc()
 
 
 if __name__ == '__main__':

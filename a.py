@@ -1,4 +1,5 @@
 import socket, random, sys, base64
+from Crypto.Cipher import PKCS1_OAEP
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
@@ -119,6 +120,25 @@ if __name__ == '__main__':
             )
 
             conn.send(encryptedMessage3)
+
+            # AUTHENTICATION SUCCESS
+            ks = nonceGenerator()
+            if conn.recv(2048).decode() == 'VERIFIED' :
+                # encryptor = PKCS1_OAEP.new(PUBLIC_KEY)
+                # encrypted = encryptor.encrypt(ks)
+                ks_encrypted = PRIVATE_KEY.encrypt(
+                    ks,
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                )
+
+                print("ENCRYPTED MESSAGE : ", ks_encrypted)
+            
+            else :
+                break
 
         elif 'quit' in message :
             break
