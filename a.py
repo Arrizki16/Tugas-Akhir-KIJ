@@ -1,3 +1,4 @@
+from hashlib import sha256
 import socket, random, sys, base64
 from Crypto.Cipher import PKCS1_OAEP
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -14,7 +15,7 @@ ADDR = (SERVER, PORT)
 ID = None
 N1 = None
 
-PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
+PRIVATE_KEY = rsa.generate_private_key(65537, 4096)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_B = None
 
@@ -23,6 +24,17 @@ def printMenuOptions():
     print("Options:")
     print("\t Enter 'connect' to connect to server")
     print("\t Enter 'quit' to exit")
+
+
+def customPRencrypt(ks, key):
+    if key is None:
+        raise ValueError("No private key available")
+
+    n = (key.private_numbers().p - 1)*(key.private_numbers().q - 1)
+    if not 0 <= ks < n:
+        raise ValueError("Message too large")
+    print(type(ks))
+    return int(pow(ks, key.private_numbers().d , n))
 
 
 def random10bit():
@@ -51,8 +63,8 @@ def getBPulbicKey(b_pem):
 
 
 def getn2(encryptedMessage):
-    cert_decrypted = b''
-    cert_decrypted += PRIVATE_KEY.decrypt(
+    decrypted_message = b''
+    decrypted_message += PRIVATE_KEY.decrypt(
         encryptedMessage,
         padding.OAEP(
             mgf=padding.MGF1(hashes.SHA256()),
@@ -60,7 +72,7 @@ def getn2(encryptedMessage):
             label=None
         )
     )
-    n2 = cert_decrypted[10:].decode()
+    n2 = decrypted_message[10:].decode()
     return n2
 
 
@@ -72,7 +84,7 @@ if __name__ == '__main__':
         print("Connection error")
         sys.exit()
     
-    ID = conn.recv(2048).decode()
+    ID = conn.recv(4096).decode()
 
     while True:
         printMenuOptions()
@@ -81,7 +93,7 @@ if __name__ == '__main__':
 
         if 'connect' in message :
             # STEP 1
-            b_pem = conn.recv(2048)
+            b_pem = conn.recv(4096)
             PUBLIC_KEY_B = getBPulbicKey(b_pem)
             N1 = nonceGenerator()
             content = (N1 + ID).encode()
@@ -94,7 +106,6 @@ if __name__ == '__main__':
                     label=None
                 )
             )
-
             conn.send(encryptedMessage)
             
             # STEP 2
@@ -102,12 +113,10 @@ if __name__ == '__main__':
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
-
             conn.send(pua)
 
-            encryptedMessage2 = conn.recv(2048)
-
             # STEP 3
+            encryptedMessage2 = conn.recv(4096)
             n2 = getn2(encryptedMessage2).encode()
 
             encryptedMessage3 = PUBLIC_KEY_B.encrypt(
@@ -118,25 +127,25 @@ if __name__ == '__main__':
                     label=None
                 )
             )
-
             conn.send(encryptedMessage3)
 
             # AUTHENTICATION SUCCESS
-            ks = nonceGenerator()
-            if conn.recv(2048).decode() == 'VERIFIED' :
-                # encryptor = PKCS1_OAEP.new(PUBLIC_KEY)
-                # encrypted = encryptor.encrypt(ks)
-                ks_encrypted = PRIVATE_KEY.encrypt(
-                    ks,
+            ks = nonceGenerator().encode()
+            if conn.recv(4096).decode() == 'VERIFIED' :
+                ks_encrypted = customPRencrypt(int.from_bytes(ks, 'big'), PRIVATE_KEY)
+                ks_encrypted = ks_encrypted.to_bytes(256, 'big')
+                finalEncryptedMessage = PUBLIC_KEY_B.encrypt(
+                    ks_encrypted,
                     padding.OAEP(
                         mgf=padding.MGF1(algorithm=hashes.SHA256()),
                         algorithm=hashes.SHA256(),
                         label=None
                     )
                 )
+                conn.send(finalEncryptedMessage)
 
-                print("ENCRYPTED MESSAGE : ", ks_encrypted)
-            
+                print("ENCRYPTED MESSAGE : ", finalEncryptedMessage)
+
             else :
                 break
 

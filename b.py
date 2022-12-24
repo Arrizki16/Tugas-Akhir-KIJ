@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 ADDR = ('127.0.0.1', 5050)
 FORMAT = 'utf-8'
 CONNECTIONS = dict()
-PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
+PRIVATE_KEY = rsa.generate_private_key(65537, 4096)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_A = None
 N2 = None
@@ -39,8 +39,8 @@ def getAPublicKey(b_pem):
 
 
 def getn1(encryptedMessage):
-    cert_decrypted = b''
-    cert_decrypted += PRIVATE_KEY.decrypt(
+    decrypted_message = b''
+    decrypted_message += PRIVATE_KEY.decrypt(
         encryptedMessage,
         padding.OAEP(
             mgf=padding.MGF1(hashes.SHA256()),
@@ -48,13 +48,13 @@ def getn1(encryptedMessage):
             label=None
         )
     )
-    n1 = cert_decrypted[0:10].decode()
+    n1 = decrypted_message[0:10].decode()
     return n1
 
 
 def getN2fromA(encryptedMessage3):
-    cert_decrypted = b''
-    cert_decrypted += PRIVATE_KEY.decrypt(
+    decrypted_message = b''
+    decrypted_message += PRIVATE_KEY.decrypt(
         encryptedMessage3,
         padding.OAEP(
             mgf=padding.MGF1(hashes.SHA256()),
@@ -62,7 +62,7 @@ def getN2fromA(encryptedMessage3):
             label=None
         )
     )
-    n2 = cert_decrypted[0:10].decode()
+    n2 = decrypted_message[0:10].decode()
     return n2
 
 
@@ -86,12 +86,12 @@ def handle_client(conn, addr, client_id):
             break
 
         elif "connect" in client_input:
-            encryptedMessage1 = conn.recv(2048)
+            encryptedMessage1 = conn.recv(4096)
             n1 = getn1(encryptedMessage1)
             N2 = nonceGenerator()
             content = (n1 + N2).encode()
 
-            a_pem = conn.recv(2048)
+            a_pem = conn.recv(4096)
             PUBLIC_KEY_A = getAPublicKey(a_pem)
 
             encryptedMessage2 = PUBLIC_KEY_A.encrypt(
@@ -102,17 +102,18 @@ def handle_client(conn, addr, client_id):
                     label=None
                 )
             )
-            
             print("[SEND]   Sending encrypted message to ", client_id)
             conn.send(encryptedMessage2)
 
-            encryptedMessage3 = conn.recv(2048)
+            encryptedMessage3 = conn.recv(4096)
             n2_from_client = getN2fromA(encryptedMessage3)
 
             if n2_from_client == N2:
                 print("[SUCCESS]    Authentication is successful")
                 conn.send("VERIFIED".encode())
 
+                finalEncryptedMessage = conn.recv(4096)
+                print("FINAL ENCRYPTED MESSAGE : ", finalEncryptedMessage)
             else :
                 print("[FAILED]     Authentication fails")
                 conn.close()
@@ -136,13 +137,11 @@ def start():
             no_of_connection += 1
             new_id = str(no_of_connection).zfill(8)
             CONNECTIONS[conn.getpeername()] = new_id
-
         try:
             Thread(
                 target=handle_client, 
                 args=(conn, addr, new_id)
             ).start()
-
         except:
             print("Thread did not start.")
             traceback.print_exc()
