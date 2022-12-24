@@ -7,15 +7,15 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 HEADER = 1028
-PORT = 5050 
+PORT = 5050
 FORMAT = 'utf-8'
 DISCONNECT_MESSAGE = '!DISCONNECT'
 SERVER = '127.0.0.1'
 ADDR = (SERVER, PORT)
 ID = None
 
-PUBLIC_KEY = rsa.generate_private_key(65537, 2048)
-PRIVATE_KEY = PUBLIC_KEY.public_key()
+PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
+PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_B = None
 
 
@@ -38,20 +38,26 @@ def nonceGenerator():
 		num += str(rand)
 	return num
 
-# def send(msg):
-#     message = msg.encode(FORMAT)
-#     msg_length = len(message)
-#     send_length = str(msg_length).encode(FORMAT)
-#     send_length += b' ' * (HEADER - len(send_length))
-#     client.send(send_length)
+def getBPulbicKey(b_pem):
+    b_pem = b_pem.decode("utf-8")
+    b64data = '\n'.join(b_pem.splitlines()[1:-1])
+    derdata = base64.b64decode(b64data)
+    pub = load_der_public_key(derdata, default_backend())
 
-#     # encrypt()
-    
-#     client.send(message)
-#     print(client.recv(2048).decode(FORMAT))
+    return pub
 
-# def sendEncryptedMessage():
-#     pass
+def getn2(encryptedMessage):
+    cert_decrypted = b''
+    cert_decrypted += PRIVATE_KEY.decrypt(
+        encryptedMessage,
+        padding.OAEP(
+            mgf=padding.MGF1(hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    n2 = cert_decrypted[10:].decode()
+    return n2
 
 
 if __name__ == '__main__':
@@ -69,21 +75,8 @@ if __name__ == '__main__':
         message = input(" -> ")
 
         if 'connect' in message :
-            # pua = PUBLIC_KEY.public_bytes(
-            #     encoding=serialization.Encoding.PEM,
-            #     format=serialization.PublicFormat.SubjectPublicKeyInfo
-            # )
-            # print(pua)
-            # conn.send(pua)
-
             b_pem = conn.recv(2048)
-            b_pem = b_pem.decode("utf-8")
-            b64data = '\n'.join(b_pem.splitlines()[1:-1])
-            derdata = base64.b64decode(b64data)
-            PUBLIC_KEY_B = load_der_public_key(derdata, default_backend())
-
-            print(PUBLIC_KEY)
-            
+            PUBLIC_KEY_B = getBPulbicKey(b_pem)
 
             n1 = nonceGenerator()
             content = (n1 + ID).encode()
@@ -99,9 +92,14 @@ if __name__ == '__main__':
 
             conn.send(encryptedMessage)
 
+            pua = PUBLIC_KEY.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+            conn.send(pua)
+
+
+            encryptedMessage2 = conn.recv(2048)
+            n2 = getn2(encryptedMessage2)
+            print(n2)
             
-
-            print("PRIVATE KEY : ", PRIVATE_KEY)
-            print("PUBLIC KEY : ", PUBLIC_KEY)
-
-
