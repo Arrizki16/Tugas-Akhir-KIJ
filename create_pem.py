@@ -20,35 +20,37 @@ def generateKey():
         print("[SUCCESS] Creating keys is successfull")
 
 
-# def readKeyA():
-#     pr_key = RSA.import_key(open(f'private_key_A.pem', 'r').read())
-#     pu_key = RSA.import_key(open(f'public_key_A.pem', 'r').read())
+def readKeyA():
+    pr_key = RSA.import_key(open(f'private_key_A.pem', 'r').read())
+    pu_key = RSA.import_key(open(f'public_key_A.pem', 'r').read())
     
-#     cipher = PKCS1_OAEP.new(key=pu_key)
+    cipher = PKCS1_OAEP.new(key=pu_key)
 
-#     cipher_text = cipher.encrypt(message)
-#     decrypt = PKCS1_OAEP.new(key=pr_key)
-#     decrypted_message = decrypt.decrypt(cipher_text)
+    cipher_text = cipher.encrypt(message)
+    decrypt = PKCS1_OAEP.new(key=pr_key)
+    decrypted_message = decrypt.decrypt(cipher_text)
     
-#     return cipher_text, decrypted_message
+    return cipher_text, decrypted_message
 
 
-# def readKeyB():
-#     pr_key = RSA.import_key(open(f'private_key_B.pem', 'r').read())
-#     pu_key = RSA.import_key(open(f'public_key_B.pem', 'r').read())
+def readKeyB():
+    pr_key = RSA.import_key(open(f'private_key_B.pem', 'r').read())
+    pu_key = RSA.import_key(open(f'public_key_B.pem', 'r').read())
+    return pr_key, pu_key
+    # cipher = PKCS1_OAEP.new(key=pu_key)
+
+    # cipher_text = cipher.encrypt(message)
+    # decrypt = PKCS1_OAEP.new(key=pr_key)
+    # decrypted_message = decrypt.decrypt(cipher_text)
     
-#     cipher = PKCS1_OAEP.new(key=pu_key)
-
-#     cipher_text = cipher.encrypt(message)
-#     decrypt = PKCS1_OAEP.new(key=pr_key)
-#     decrypted_message = decrypt.decrypt(cipher_text)
-    
-#     return cipher_text, decrypted_message
+    # return cipher_text, decrypted_message
 
 
 if __name__ == "__main__":
     generateKey()
-    # ct_a , et_a = readKeyA()
-    # ct_b , et_b = readKeyB()
+    ct_a , et_a = readKeyA()
+    ct_b , et_b = readKeyB()
 
-    # print(ct_a, et_a, ct_b, et_b)
+    print(ct_a, et_a)
+    print("---------")
+    print(ct_b, et_b)
