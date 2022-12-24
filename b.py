@@ -7,13 +7,14 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 
-HEADER = 1028
 ADDR = ('127.0.0.1', 5050)
 FORMAT = 'utf-8'
 CONNECTIONS = dict()
 PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_A = None
+N2 = None
+
 
 def nonceGenerator():
 	num = ""
@@ -45,26 +46,35 @@ def getn1(encryptedMessage):
     return n1
 
 
-# SENDING PUBLIC KEY TO A
+def getN2fromA(encryptedMessage3):
+    cert_decrypted = b''
+    cert_decrypted += PRIVATE_KEY.decrypt(
+        encryptedMessage3,
+        padding.OAEP(
+            mgf=padding.MGF1(hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    n2 = cert_decrypted[0:10].decode()
+    return n2
+
+
 def handle_client(conn, addr, client_id):
-    print("[ACK]    Assigning ID", client_id, "to client ", addr[0], ":", addr[1])
+    print("[ACK]    Assigning ID", client_id, "to ", addr[0], ":", addr[1])
     conn.send(CONNECTIONS[conn.getpeername()].encode())
 
-    print("[SEND]   Sending public key to client", client_id)
+    print("[SEND]   Sending public key to ", client_id)
     public_key_pem = PUBLIC_KEY.public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
-        # encoding=serialization.Encoding.PEM,
-        # format=serialization.PrivateFormat.PKCS8,
-        # encryption_algorithm=serialization.BestAvailableEncryption(password=b'Q&s&6Zxc2b&RUeBB')
     )
     conn.send(public_key_pem)
 
     encryptedMessage1 = conn.recv(2048)
     n1 = getn1(encryptedMessage1)
-    n2 = nonceGenerator()
-    print("n2 : ", n2)
-    content = (n1 + n2).encode()
+    N2 = nonceGenerator()
+    content = (n1 + N2).encode()
 
     a_pem = conn.recv(2048)
     PUBLIC_KEY_A = getAPublicKey(a_pem)
@@ -78,10 +88,18 @@ def handle_client(conn, addr, client_id):
         )
     )
 
+    print("[SEND]   Sending encrypted message to ", client_id)
     conn.send(encryptedMessage2)
 
+    encryptedMessage3 = conn.recv(2048)
+    n2_from_client = getN2fromA(encryptedMessage3)
 
-# START SERVER AND GO TO handle_client
+    if n2_from_client == N2:
+        print("[SUCCESS]    Authentication is successful")
+    else :
+        print("[FAILED]     Authentication fails")
+
+
 def start():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(ADDR)
