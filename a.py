@@ -15,7 +15,7 @@ ADDR = (SERVER, PORT)
 ID = None
 N1 = None
 
-PRIVATE_KEY = rsa.generate_private_key(65537, 4096)
+PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_B = None
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
         print("Connection error")
         sys.exit()
     
-    ID = conn.recv(4096).decode()
+    ID = conn.recv(2048).decode()
 
     while True:
         printMenuOptions()
@@ -93,7 +93,7 @@ if __name__ == '__main__':
 
         if 'connect' in message :
             # STEP 1
-            b_pem = conn.recv(4096)
+            b_pem = conn.recv(2048)
             PUBLIC_KEY_B = getBPulbicKey(b_pem)
             N1 = nonceGenerator()
             content = (N1 + ID).encode()
@@ -116,7 +116,7 @@ if __name__ == '__main__':
             conn.send(pua)
 
             # STEP 3
-            encryptedMessage2 = conn.recv(4096)
+            encryptedMessage2 = conn.recv(2048)
             n2 = getn2(encryptedMessage2).encode()
 
             encryptedMessage3 = PUBLIC_KEY_B.encrypt(
@@ -131,9 +131,9 @@ if __name__ == '__main__':
 
             # AUTHENTICATION SUCCESS
             ks = nonceGenerator().encode()
-            if conn.recv(4096).decode() == 'VERIFIED' :
+            if conn.recv(2048).decode() == 'VERIFIED' :
                 ks_encrypted = customPRencrypt(int.from_bytes(ks, 'big'), PRIVATE_KEY)
-                ks_encrypted = ks_encrypted.to_bytes(256, 'big')
+                ks_encrypted = ks_encrypted.to_bytes(512, 'big')
                 finalEncryptedMessage = PUBLIC_KEY_B.encrypt(
                     ks_encrypted,
                     padding.OAEP(

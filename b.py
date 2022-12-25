@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 ADDR = ('127.0.0.1', 5050)
 FORMAT = 'utf-8'
 CONNECTIONS = dict()
-PRIVATE_KEY = rsa.generate_private_key(65537, 4096)
+PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_A = None
 N2 = None
@@ -25,7 +25,7 @@ def nonceGenerator():
 
 
 def receive_input(conn):
-    client_input = conn.recv(4096)
+    client_input = conn.recv(2048)
     client_input = client_input.decode().rstrip()
     return client_input
 
@@ -86,12 +86,12 @@ def handle_client(conn, addr, client_id):
             break
 
         elif "connect" in client_input:
-            encryptedMessage1 = conn.recv(4096)
+            encryptedMessage1 = conn.recv(2048)
             n1 = getn1(encryptedMessage1)
             N2 = nonceGenerator()
             content = (n1 + N2).encode()
 
-            a_pem = conn.recv(4096)
+            a_pem = conn.recv(2048)
             PUBLIC_KEY_A = getAPublicKey(a_pem)
 
             encryptedMessage2 = PUBLIC_KEY_A.encrypt(
@@ -105,18 +105,31 @@ def handle_client(conn, addr, client_id):
             print("[SEND]   Sending encrypted message to ", client_id)
             conn.send(encryptedMessage2)
 
-            encryptedMessage3 = conn.recv(4096)
+            encryptedMessage3 = conn.recv(2048)
             n2_from_client = getN2fromA(encryptedMessage3)
 
             if n2_from_client == N2:
                 print("[SUCCESS]    Authentication is successful")
                 conn.send("VERIFIED".encode())
 
-                finalEncryptedMessage = conn.recv(4096)
+                finalEncryptedMessage = conn.recv(2048)
                 print("FINAL ENCRYPTED MESSAGE : ", finalEncryptedMessage)
+
+                finalDecryptedMessage = b''
+                finalDecryptedMessage += PRIVATE_KEY.decrypt(
+                    finalEncryptedMessage,
+                    padding.OAEP(
+                        mgf=padding.MGF1(hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                )
+
             else :
                 print("[FAILED]     Authentication fails")
                 conn.close()
+        else:
+            pass
 
 
 def start():
