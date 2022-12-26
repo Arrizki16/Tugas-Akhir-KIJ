@@ -33,7 +33,6 @@ def customPRencrypt(ks, key):
     n = (key.private_numbers().p - 1)*(key.private_numbers().q - 1)
     if not 0 <= ks < n:
         raise ValueError("Message too large")
-    print(type(ks))
     return int(pow(ks, key.private_numbers().d , n))
 
 
@@ -106,6 +105,7 @@ if __name__ == '__main__':
                     label=None
                 )
             )
+            print("ENC MESSAGE : ", encryptedMessage)
             conn.send(encryptedMessage)
             
             # STEP 2
@@ -129,11 +129,12 @@ if __name__ == '__main__':
             )
             conn.send(encryptedMessage3)
 
-            # AUTHENTICATION SUCCESS
+            # STEP 4
             ks = nonceGenerator().encode()
+            print("KS : ", ks)
             if conn.recv(2048).decode() == 'VERIFIED' :
                 ks_encrypted = customPRencrypt(int.from_bytes(ks, 'big'), PRIVATE_KEY)
-                ks_encrypted = ks_encrypted.to_bytes(512, 'big')
+                ks_encrypted = ks_encrypted.to_bytes(256, 'big')
                 finalEncryptedMessage = PUBLIC_KEY_B.encrypt(
                     ks_encrypted,
                     padding.OAEP(
@@ -142,9 +143,8 @@ if __name__ == '__main__':
                         label=None
                     )
                 )
+                print("FINAL : ", finalEncryptedMessage)
                 conn.send(finalEncryptedMessage)
-
-                print("ENCRYPTED MESSAGE : ", finalEncryptedMessage)
 
             else :
                 break

@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 ADDR = ('127.0.0.1', 5050)
 FORMAT = 'utf-8'
 CONNECTIONS = dict()
-PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
+PRIVATE_KEY = rsa.generate_private_key(65537, 4096)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_A = None
 N2 = None
@@ -36,6 +36,14 @@ def getAPublicKey(b_pem):
     derdata = base64.b64decode(b64data)
     pua = load_der_public_key(derdata, default_backend())
     return pua
+
+
+def customPUdecrypt(ks, key):
+    if key is None:
+        raise ValueError("No public key available")
+    # if not 0 <= ks < key.public_numbers().n:
+    #     raise ValueError("Message too large")
+    return int(pow(ks, key.public_numbers().e, key.public_numbers().n))
 
 
 def getn1(encryptedMessage):
@@ -115,15 +123,21 @@ def handle_client(conn, addr, client_id):
                 finalEncryptedMessage = conn.recv(2048)
                 print("FINAL ENCRYPTED MESSAGE : ", finalEncryptedMessage)
 
-                finalDecryptedMessage = b''
-                finalDecryptedMessage += PRIVATE_KEY.decrypt(
-                    finalEncryptedMessage,
-                    padding.OAEP(
-                        mgf=padding.MGF1(hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
+                ks_encrypted = customPUdecrypt(int.from_bytes(finalEncryptedMessage, 'big'), PUBLIC_KEY_A)
+                print("LEN SEBELUM | TYPE : ", len(str(ks_encrypted)), type(ks_encrypted))
+                ks_encrypted = ks_encrypted.to_bytes(512, 'big')
+                print("FINAL KS ENCRYPTED : ", ks_encrypted)
+                print("LEN AFTER | TYPE : ", len(ks_encrypted), type(ks_encrypted))
+                # ks = b''
+                # ks += PRIVATE_KEY.decrypt(
+                #     ks_encrypted,
+                #     padding.OAEP(
+                #         mgf=padding.MGF1(hashes.SHA256()),
+                #         algorithm=hashes.SHA256(),
+                #         label=None
+                #     )
+                # )
+                # print("KS : ", ks)
 
             else :
                 print("[FAILED]     Authentication fails")
