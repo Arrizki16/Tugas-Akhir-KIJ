@@ -6,11 +6,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_der_public_key
+from Cryptodome.Cipher import AES
+from Cryptodome.Hash import SHA256
+
 
 ADDR = ('127.0.0.1', 5050)
 FORMAT = 'utf-8'
 CONNECTIONS = dict()
-PRIVATE_KEY = rsa.generate_private_key(65537, 4096)
+PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_A = None
 N2 = None
@@ -41,8 +44,8 @@ def getAPublicKey(b_pem):
 def customPUdecrypt(ks, key):
     if key is None:
         raise ValueError("No public key available")
-    # if not 0 <= ks < key.public_numbers().n:
-    #     raise ValueError("Message too large")
+    if not 0 <= ks <= key.public_numbers().n:
+        raise ValueError("Message too large")
     return int(pow(ks, key.public_numbers().e, key.public_numbers().n))
 
 
@@ -120,24 +123,34 @@ def handle_client(conn, addr, client_id):
                 print("[SUCCESS]    Authentication is successful")
                 conn.send("VERIFIED".encode())
 
-                finalEncryptedMessage = conn.recv(2048)
-                print("FINAL ENCRYPTED MESSAGE : ", finalEncryptedMessage)
+                finalEncryptedMessage = conn.recv(4096)
+                aes_key_message = finalEncryptedMessage[256:]
+                print(aes_key_message, len(aes_key_message))
+                ks_message = finalEncryptedMessage[:256]
+                print(ks_message, len(ks_message))
+                
+                aes_key_decrypt = PRIVATE_KEY.decrypt(
+                    aes_key_message,
+                    padding.OAEP(
+                        mgf=padding.MGF1(hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                )
+                print(aes_key_decrypt, len(aes_key_decrypt))
 
-                ks_encrypted = customPUdecrypt(int.from_bytes(finalEncryptedMessage, 'big'), PUBLIC_KEY_A)
-                print("LEN SEBELUM | TYPE : ", len(str(ks_encrypted)), type(ks_encrypted))
-                ks_encrypted = ks_encrypted.to_bytes(512, 'big')
-                print("FINAL KS ENCRYPTED : ", ks_encrypted)
-                print("LEN AFTER | TYPE : ", len(ks_encrypted), type(ks_encrypted))
-                # ks = b''
-                # ks += PRIVATE_KEY.decrypt(
-                #     ks_encrypted,
-                #     padding.OAEP(
-                #         mgf=padding.MGF1(hashes.SHA256()),
-                #         algorithm=hashes.SHA256(),
-                #         label=None
-                #     )
-                # )
-                # print("KS : ", ks)
+                cipher = AES.new(aes_key_decrypt, AES.MODE_CBC)
+
+                aes_plaintext = cipher.decrypt(ks_message)
+
+                print("AES Plaintext : ", aes_plaintext, len(aes_plaintext))
+
+                ks = customPUdecrypt(int.from_bytes(aes_plaintext, 'big'), PUBLIC_KEY_A)
+                print("KS : ", ks)
+
+                # decrypted_string = bytes(ks).decode()
+                # print(decrypted_string)
+
 
             else :
                 print("[FAILED]     Authentication fails")

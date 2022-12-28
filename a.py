@@ -1,12 +1,15 @@
 from hashlib import sha256
+import os
 import socket, random, sys, base64
 from Crypto.Cipher import PKCS1_OAEP
+from Cryptodome.Hash import SHA256
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_der_public_key
+from Cryptodome.Cipher import AES
 
 PORT = 5050
 DISCONNECT_MESSAGE = '!DISCONNECT'
@@ -105,7 +108,6 @@ if __name__ == '__main__':
                     label=None
                 )
             )
-            print("ENC MESSAGE : ", encryptedMessage)
             conn.send(encryptedMessage)
             
             # STEP 2
@@ -134,17 +136,29 @@ if __name__ == '__main__':
             print("KS : ", ks)
             if conn.recv(2048).decode() == 'VERIFIED' :
                 ks_encrypted = customPRencrypt(int.from_bytes(ks, 'big'), PRIVATE_KEY)
+                print("KS AWAL : ", ks_encrypted)
                 ks_encrypted = ks_encrypted.to_bytes(256, 'big')
+                print("KS ENCRYPTED : ", ks_encrypted)
+
+                AES_KEY = os.urandom(32)
+                print("AES KEY : ", AES_KEY)
+                cipher = AES.new(AES_KEY, AES.MODE_CBC)
+                ciphertext = cipher.encrypt(ks_encrypted)
+                print("CHIPER TEXT : ", ciphertext, type(ciphertext))
+
+
                 finalEncryptedMessage = PUBLIC_KEY_B.encrypt(
-                    ks_encrypted,
+                    AES_KEY,
                     padding.OAEP(
                         mgf=padding.MGF1(algorithm=hashes.SHA256()),
                         algorithm=hashes.SHA256(),
                         label=None
                     )
                 )
-                print("FINAL : ", finalEncryptedMessage)
-                conn.send(finalEncryptedMessage)
+                print("FINAL ENCRYPTED : ", finalEncryptedMessage)
+
+                combined_message = b''.join([ciphertext,finalEncryptedMessage])
+                conn.send(combined_message)
 
             else :
                 break
