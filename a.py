@@ -10,6 +10,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 from Cryptodome.Cipher import AES
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from Crypto.Cipher import AES
+from Crypto import Random
+
 
 PORT = 5050
 DISCONNECT_MESSAGE = '!DISCONNECT'
@@ -133,31 +137,45 @@ if __name__ == '__main__':
 
             # STEP 4
             ks = nonceGenerator().encode()
-            print("KS : ", ks)
+            print("KS to byts : ", int.from_bytes(ks, 'big'))
             if conn.recv(2048).decode() == 'VERIFIED' :
                 ks_encrypted = customPRencrypt(int.from_bytes(ks, 'big'), PRIVATE_KEY)
                 print("KS AWAL : ", ks_encrypted)
                 ks_encrypted = ks_encrypted.to_bytes(256, 'big')
                 print("KS ENCRYPTED : ", ks_encrypted)
 
-                AES_KEY = os.urandom(32)
-                print("AES KEY : ", AES_KEY)
-                cipher = AES.new(AES_KEY, AES.MODE_CBC)
-                ciphertext = cipher.encrypt(ks_encrypted)
-                print("CHIPER TEXT : ", ciphertext, type(ciphertext))
+                ### implementasi symetric
+                key = os.urandom(AES.block_size)
+                print("\nkey asli : ", key)
+                iv = os.urandom(AES.block_size)
+                print("\niv asli : ", iv)
+                cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+                encryptor = cipher.encryptor()
+                ct = encryptor.update(ks_encrypted) + encryptor.finalize()
+                print("\nCT : ", ct, len(ct))
+                ###
 
-
-                finalEncryptedMessage = PUBLIC_KEY_B.encrypt(
-                    AES_KEY,
+                key_message = PUBLIC_KEY_B.encrypt(
+                    key,
                     padding.OAEP(
                         mgf=padding.MGF1(algorithm=hashes.SHA256()),
                         algorithm=hashes.SHA256(),
                         label=None
                     )
                 )
-                print("FINAL ENCRYPTED : ", finalEncryptedMessage)
-
-                combined_message = b''.join([ciphertext,finalEncryptedMessage])
+                print("\nkey message : ", key_message)
+                iv_message = PUBLIC_KEY_B.encrypt(
+                    iv,
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                )
+                print("\niv message : ", iv_message)
+                # print("FINAL ENCRYPTED : ", finalEncryptedMessage)
+                conn.send(ct)
+                combined_message = b''.join([key_message,iv_message])
                 conn.send(combined_message)
 
             else :
