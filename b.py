@@ -20,7 +20,13 @@ PUBLIC_KEY_A = None
 N2 = None
 
 
-def nonceGenerator():
+def receive_input(conn):
+    client_input = conn.recv(2048)
+    client_input = client_input.decode().rstrip()
+    return client_input
+
+
+def nonce_generator():
 	num = ""
 	for i in range(10):
 		rand = random.randint(0,1)
@@ -28,13 +34,7 @@ def nonceGenerator():
 	return num
 
 
-def receive_input(conn):
-    client_input = conn.recv(2048)
-    client_input = client_input.decode().rstrip()
-    return client_input
-
-
-def getAPublicKey(b_pem):
+def get_a_public_key(b_pem):
     b_pem = b_pem.decode("utf-8")
     b64data = '\n'.join(b_pem.splitlines()[1:-1])
     derdata = base64.b64decode(b64data)
@@ -42,7 +42,7 @@ def getAPublicKey(b_pem):
     return pua
 
 
-def customPUdecrypt(ks, key):
+def custom_public_key_decrypt(ks, key):
     if key is None:
         raise ValueError("No public key available")
     if not 0 <= ks < key.public_numbers().n:
@@ -50,7 +50,7 @@ def customPUdecrypt(ks, key):
     return int(pow(ks, key.public_numbers().e, key.public_numbers().n))
 
 
-def getn1(encryptedMessage):
+def get_n1(encryptedMessage):
     decrypted_message = b''
     decrypted_message += PRIVATE_KEY.decrypt(
         encryptedMessage,
@@ -64,7 +64,7 @@ def getn1(encryptedMessage):
     return n1
 
 
-def getN2fromA(encryptedMessage3):
+def get_n2_from_a(encryptedMessage3):
     decrypted_message = b''
     decrypted_message += PRIVATE_KEY.decrypt(
         encryptedMessage3,
@@ -79,10 +79,10 @@ def getN2fromA(encryptedMessage3):
 
 
 def handle_client(conn, addr, client_id):
-    print("[ACK]    Assigning ID", client_id, "to ", addr[0], ":", addr[1])
+    print("[ACK]     Assigning ID", client_id, "to ", addr[0], ":", addr[1])
     conn.send(CONNECTIONS[conn.getpeername()].encode())
 
-    print("[SEND]   Sending public key to ", client_id)
+    print("[SEND]    Sending public key to ", client_id)
     public_key_pem = PUBLIC_KEY.public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
@@ -94,17 +94,17 @@ def handle_client(conn, addr, client_id):
         if "quit" in client_input:
             CONNECTIONS[conn.getpeername()] = None
             conn.close()
-            print("[DISC]   Client", client_id, "disconnected.")
+            print("[DISC]    Client", client_id, "disconnected.")
             break
 
         elif "connect" in client_input:
             encryptedMessage1 = conn.recv(2048)
-            n1 = getn1(encryptedMessage1)
-            N2 = nonceGenerator()
+            n1 = get_n1(encryptedMessage1)
+            N2 = nonce_generator()
             content = (n1 + N2).encode()
 
             a_pem = conn.recv(2048)
-            PUBLIC_KEY_A = getAPublicKey(a_pem)
+            PUBLIC_KEY_A = get_a_public_key(a_pem)
 
             encryptedMessage2 = PUBLIC_KEY_A.encrypt(
                 content,
@@ -114,28 +114,17 @@ def handle_client(conn, addr, client_id):
                     label=None
                 )
             )
-            print("[SEND]   Sending encrypted message to ", client_id)
+            print("[SEND]    Sending encrypted message to ", client_id)
             conn.send(encryptedMessage2)
 
             encryptedMessage3 = conn.recv(2048)
-            n2_from_client = getN2fromA(encryptedMessage3)
+            n2_from_client = get_n2_from_a(encryptedMessage3)
 
             if n2_from_client == N2:
-                print("[SUCCESS]    Authentication is successful")
+                print("[SUCCESS] Authentication is successful")
                 conn.send("VERIFIED".encode())
 
                 ct_message = conn.recv(2048)
-                print("\nct message : ", ct_message)
-                # ct_message_decrypt = PRIVATE_KEY.decrypt(
-                #     ct_message,
-                #     padding.OAEP(
-                #         mgf=padding.MGF1(hashes.SHA256()),
-                #         algorithm=hashes.SHA256(),
-                #         label=None
-                #     )
-                # )
-
-
                 finalEncryptedMessage = conn.recv(4096)
                 key_message = finalEncryptedMessage[:256]
 
@@ -147,8 +136,6 @@ def handle_client(conn, addr, client_id):
                         label=None
                     )
                 )
-                print("\nKEY MESSAGE : ",key_message, len(key_message))
-                print("\nkey message decrypted : ", key_message_decrypt)
 
                 iv_message = finalEncryptedMessage[256:]
                 iv_message_decrypt = PRIVATE_KEY.decrypt(
@@ -159,22 +146,17 @@ def handle_client(conn, addr, client_id):
                         label=None
                     )
                 )
-                print("\niv : ", iv_message)
-                print("\niv message decrypted : ", iv_message_decrypt)
 
                 cipher = Cipher(algorithms.AES(key_message_decrypt), modes.CBC(iv_message_decrypt))
                 decryptor = cipher.decryptor()
                 ct = decryptor.update(ct_message) + decryptor.finalize()
-                print("\nct : ", ct)
 
                 ks_decrypted = int.from_bytes(ct, 'big')
-                print("\nct as int : ", ks_decrypted)
-                
-                ks = customPUdecrypt(ks_decrypted, PUBLIC_KEY_A)
-                print("\nks : ", ks)
+                ks = custom_public_key_decrypt(ks_decrypted, PUBLIC_KEY_A)
+                print(f"[RECV]    Key secret {ks} is received successfully")
 
             else :
-                print("[FAILED]     Authentication fails")
+                print("[FAILED]    Authentication fails")
                 conn.close()
         else:
             pass
@@ -184,7 +166,7 @@ def start():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(ADDR)
 
-    print("[WAIT]   Waiting for connection...")
+    print("[WAIT]    Waiting for connection...")
     server.listen(2)
 
     no_of_connection = 0
@@ -192,7 +174,7 @@ def start():
     while True:
         conn, addr = server.accept()
         new_id = None
-        print("[ACK]    Incoming connection from: ", addr)
+        print("[ACK]     Incoming connection from: ", addr)
 
         if conn.getpeername() not in CONNECTIONS.keys():
             no_of_connection += 1
@@ -209,5 +191,5 @@ def start():
 
 
 if __name__ == '__main__':
-    print("[START]  Server is starting...")
+    print("[START]   Server is starting...")
     start()
