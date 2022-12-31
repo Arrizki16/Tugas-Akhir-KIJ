@@ -23,6 +23,11 @@ def print_menu_options():
     print("\t Enter 'quit' to exit")
 
 
+def print_menu_options_after_connect():
+    print("\t Enter 'send' to send key secret to server")
+    print("\t Enter 'quit' to exit")
+
+
 def nonce_generator():
 	num = ""
 	for i in range(10):
@@ -97,12 +102,13 @@ if __name__ == '__main__':
     
     ID = conn.recv(2048).decode()
 
+
     while True:
         print_menu_options()
-        message = input(" -> ")
-        conn.send(message.encode())
+        first_input = input(" -> ")
+        conn.send(first_input.encode())
 
-        if 'connect' in message :
+        if 'connect' in first_input:
             # STEP 1
             publik_key_b_pem = conn.recv(2048)
             PUBLIC_KEY_B = get_b_public_key(publik_key_b_pem)
@@ -127,22 +133,41 @@ if __name__ == '__main__':
             conn.send(third_encrypted_message)
 
             # STEP 4
-            if conn.recv(2048).decode() == 'VERIFIED' :
-                key_secret = random.randint(0, 2**256 - 1)
-                key_secret_encrypted = custom_private_key_encrypt(key_secret, PRIVATE_KEY)
-                key_secret_encrypted_in_bytes = key_secret_encrypted.to_bytes(256, 'big')
+            verification = conn.recv(2048)
+            if verification.decode() == 'VERIFIED' :
+                print_menu_options_after_connect()
+                second_input = input(" -> ")
+                conn.send(second_input.encode())
+                if 'send' in second_input:
+                    key_secret = random.randint(0, 2**256 - 1)
+                    print("key secret : ", key_secret)
+                    key_secret_encrypted = custom_private_key_encrypt(key_secret, PRIVATE_KEY)
+                    key_secret_encrypted_in_bytes = key_secret_encrypted.to_bytes(256, 'big')
 
-                symmetric_content = encrypt_with_symmetric_key(key_secret_encrypted_in_bytes)
+                    symmetric_content = encrypt_with_symmetric_key(key_secret_encrypted_in_bytes)
+                    conn.send(symmetric_content[2])
+                    print(symmetric_content[2])
 
-                key_message = encrypt(symmetric_content[0], PUBLIC_KEY_B)
-                iv_message = encrypt(symmetric_content[1], PUBLIC_KEY_B)
+                    key_message = encrypt(symmetric_content[0], PUBLIC_KEY_B)
+                    iv_message = encrypt(symmetric_content[1], PUBLIC_KEY_B)
+                    print("\nkey message : ", key_message)
+                    print("\niv message : ", iv_message)
 
-                conn.send(symmetric_content[2])
-                combined_message = b''.join([key_message,iv_message])
-                conn.send(combined_message)
+                    combined_message = b''.join([key_message,iv_message])
+                    conn.send(combined_message)
+                    print(combined_message)
+
+                elif 'quit' in second_input :
+                    break
+                
+                else :
+                    pass
 
             else :
                 break
 
-        elif 'quit' in message :
+        elif 'quit' in first_input :
             break
+
+        else :
+            pass
