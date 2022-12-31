@@ -1,22 +1,19 @@
 import socket, random, base64, traceback
 from threading import Thread
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_der_public_key
-from Cryptodome.Cipher import AES
-from Cryptodome.Hash import SHA256
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 ADDR = ('127.0.0.1', 5050)
-FORMAT = 'utf-8'
 CONNECTIONS = dict()
 PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
 PUBLIC_KEY_A = None
+ID = None
+N1 = None
 N2 = None
 
 
@@ -34,48 +31,58 @@ def nonce_generator():
 	return num
 
 
-def get_a_public_key(b_pem):
-    b_pem = b_pem.decode("utf-8")
-    b64data = '\n'.join(b_pem.splitlines()[1:-1])
+def decrypt(chipertext, KEY):
+    return KEY.decrypt(
+        chipertext,
+        padding.OAEP(
+            mgf=padding.MGF1(hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    
+
+def custom_public_key_decrypt(ks, KEY):
+    if KEY is None:
+        raise ValueError("No public key available")
+    if not 0 <= ks < KEY.public_numbers().n:
+        raise ValueError("Message too large")
+    return int(pow(ks, KEY.public_numbers().e, KEY.public_numbers().n))
+
+
+def decrypt_with_symmetric_key(message):
+    key_message = message[:256]
+    key_message_decrypt = decrypt(key_message, PRIVATE_KEY)
+    iv_message = message[256:]
+    iv_message_decrypt = decrypt(iv_message, PRIVATE_KEY)
+
+    cipher = Cipher(
+        algorithms.AES(key_message_decrypt), 
+        modes.CBC(iv_message_decrypt)
+    )
+
+    return cipher.decryptor()
+
+
+def get_a_public_key(message):
+    message = message.decode("utf-8")
+    b64data = '\n'.join(message.splitlines()[1:-1])
     derdata = base64.b64decode(b64data)
     pua = load_der_public_key(derdata, default_backend())
     return pua
 
 
-def custom_public_key_decrypt(ks, key):
-    if key is None:
-        raise ValueError("No public key available")
-    if not 0 <= ks < key.public_numbers().n:
-        raise ValueError("Message too large")
-    return int(pow(ks, key.public_numbers().e, key.public_numbers().n))
-
-
-def get_n1(encryptedMessage):
+def get_n_value(ciphertext):
     decrypted_message = b''
     decrypted_message += PRIVATE_KEY.decrypt(
-        encryptedMessage,
+        ciphertext,
         padding.OAEP(
             mgf=padding.MGF1(hashes.SHA256()),
             algorithm=hashes.SHA256(),
             label=None
         )
     )
-    n1 = decrypted_message[0:10].decode()
-    return n1
-
-
-def get_n2_from_a(encryptedMessage3):
-    decrypted_message = b''
-    decrypted_message += PRIVATE_KEY.decrypt(
-        encryptedMessage3,
-        padding.OAEP(
-            mgf=padding.MGF1(hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    n2 = decrypted_message[0:10].decode()
-    return n2
+    return decrypted_message[0:10].decode()
 
 
 def handle_client(conn, addr, client_id):
@@ -98,15 +105,15 @@ def handle_client(conn, addr, client_id):
             break
 
         elif "connect" in client_input:
-            encryptedMessage1 = conn.recv(2048)
-            n1 = get_n1(encryptedMessage1)
+            first_encrypted_message = conn.recv(2048)
+            N1 = get_n_value(first_encrypted_message)
             N2 = nonce_generator()
-            content = (n1 + N2).encode()
+            content = (N1 + N2).encode()
 
-            a_pem = conn.recv(2048)
-            PUBLIC_KEY_A = get_a_public_key(a_pem)
+            public_key_a_pem = conn.recv(2048)
+            PUBLIC_KEY_A = get_a_public_key(public_key_a_pem)
 
-            encryptedMessage2 = PUBLIC_KEY_A.encrypt(
+            second_encrypted_message = PUBLIC_KEY_A.encrypt(
                 content,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -115,45 +122,25 @@ def handle_client(conn, addr, client_id):
                 )
             )
             print("[SEND]    Sending encrypted message to ", client_id)
-            conn.send(encryptedMessage2)
+            conn.send(second_encrypted_message)
 
-            encryptedMessage3 = conn.recv(2048)
-            n2_from_client = get_n2_from_a(encryptedMessage3)
+            third_encrypted_message = conn.recv(2048)
+            n2_from_a = get_n_value(third_encrypted_message)
 
-            if n2_from_client == N2:
+            if n2_from_a == N2:
                 print("[SUCCESS] Authentication is successful")
                 conn.send("VERIFIED".encode())
 
-                ct_message = conn.recv(2048)
-                finalEncryptedMessage = conn.recv(4096)
-                key_message = finalEncryptedMessage[:256]
+                symmetric_content = conn.recv(2048)
 
-                key_message_decrypt = PRIVATE_KEY.decrypt(
-                    key_message,
-                    padding.OAEP(
-                        mgf=padding.MGF1(hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
+                key_and_iv_symmetric_content = conn.recv(4096)
+                decryptor = decrypt_with_symmetric_key(key_and_iv_symmetric_content)
+                
+                key_secret_in_bytes = decryptor.update(symmetric_content) + decryptor.finalize()
 
-                iv_message = finalEncryptedMessage[256:]
-                iv_message_decrypt = PRIVATE_KEY.decrypt(
-                    iv_message,
-                    padding.OAEP(
-                        mgf=padding.MGF1(hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
-
-                cipher = Cipher(algorithms.AES(key_message_decrypt), modes.CBC(iv_message_decrypt))
-                decryptor = cipher.decryptor()
-                ct = decryptor.update(ct_message) + decryptor.finalize()
-
-                ks_decrypted = int.from_bytes(ct, 'big')
-                ks = custom_public_key_decrypt(ks_decrypted, PUBLIC_KEY_A)
-                print(f"[RECV]    Key secret {ks} is received successfully")
+                key_secret_in_int = int.from_bytes(key_secret_in_bytes, 'big')
+                key_secret = custom_public_key_decrypt(key_secret_in_int, PUBLIC_KEY_A)
+                print(f"[RECV]    Key secret {key_secret} is received successfully\n")
 
             else :
                 print("[FAILED]    Authentication fails")

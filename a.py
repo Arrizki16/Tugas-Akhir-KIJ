@@ -1,21 +1,16 @@
-from hashlib import sha256
-import os
-import socket, random, sys, base64
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives import serialization
+import socket, random, sys, os, base64
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_der_public_key
-from Cryptodome.Cipher import AES
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from Crypto.Cipher import AES
 
-PORT = 5050
-SERVER = '127.0.0.1'
-ADDR = (SERVER, PORT)
-ID = None
+
+ADDR = ('127.0.0.1', 5050)
+ID = None 
 N1 = None
+N2 = None
 
 PRIVATE_KEY = rsa.generate_private_key(65537, 2048)
 PUBLIC_KEY = PRIVATE_KEY.public_key()
@@ -28,24 +23,6 @@ def print_menu_options():
     print("\t Enter 'quit' to exit")
 
 
-def custom_private_key_encrypt(ks, key):
-    if key is None:
-        raise ValueError("No private key available")
-
-    n = (PRIVATE_KEY.private_numbers().p)*(PRIVATE_KEY.private_numbers().q)
-    if not 0 <= ks < n:
-        raise ValueError("Message too large")
-    return int(pow(ks, key.private_numbers().d , n))
-
-
-def random_10_bit():
-	num = ""
-	for i in range(10):
-		rand = random.randint(0,1)
-		num += str(rand)
-	return int(num,2)
-
-
 def nonce_generator():
 	num = ""
 	for i in range(10):
@@ -54,19 +31,52 @@ def nonce_generator():
 	return num
 
 
-def get_b_public_key(b_pem):
-    b_pem = b_pem.decode("utf-8")
-    b64data = '\n'.join(b_pem.splitlines()[1:-1])
+def encrypt(plaintext, KEY):
+    return KEY.encrypt(
+        plaintext,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+
+def custom_private_key_encrypt(ks, KEY):
+    if KEY is None:
+        raise ValueError("No private key available")
+    n = (KEY.private_numbers().p)*(KEY.private_numbers().q)
+    if not 0 <= ks < n:
+        raise ValueError("Message too large")
+    return int(pow(ks, KEY.private_numbers().d , n))
+
+
+def encrypt_with_symmetric_key(message):
+    key = os.urandom(AES.block_size)
+    iv = os.urandom(AES.block_size)
+    cipher = Cipher(
+        algorithms.AES(key), 
+        modes.CBC(iv)
+    )
+    encryptor = cipher.encryptor()
+    ct = encryptor.update(message) + encryptor.finalize()
+
+    return key, iv, ct
+
+
+def get_b_public_key(message):
+    message = message.decode("utf-8")
+    b64data = '\n'.join(message.splitlines()[1:-1])
     derdata = base64.b64decode(b64data)
     pub = load_der_public_key(derdata, default_backend())
 
     return pub
 
 
-def get_n2(encryptedMessage):
+def get_n2(message):
     decrypted_message = b''
     decrypted_message += PRIVATE_KEY.decrypt(
-        encryptedMessage,
+        message,
         padding.OAEP(
             mgf=padding.MGF1(hashes.SHA256()),
             algorithm=hashes.SHA256(),
@@ -94,74 +104,40 @@ if __name__ == '__main__':
 
         if 'connect' in message :
             # STEP 1
-            b_pem = conn.recv(2048)
-            PUBLIC_KEY_B = get_b_public_key(b_pem)
+            publik_key_b_pem = conn.recv(2048)
+            PUBLIC_KEY_B = get_b_public_key(publik_key_b_pem)
             N1 = nonce_generator()
-            content = (N1 + ID).encode()
+            first_message = (N1 + ID).encode()
 
-            encryptedMessage = PUBLIC_KEY_B.encrypt(
-                content,
-                padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                    algorithm=hashes.SHA256(),
-                    label=None
-                )
-            )
-            conn.send(encryptedMessage)
+            first_encrypted_message= encrypt(first_message, PUBLIC_KEY_B)
+            conn.send(first_encrypted_message)
             
             # STEP 2
-            pua = PUBLIC_KEY.public_bytes(
+            public_key_a = PUBLIC_KEY.public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
-            conn.send(pua)
+            conn.send(public_key_a)
 
             # STEP 3
-            encryptedMessage2 = conn.recv(2048)
-            n2 = get_n2(encryptedMessage2).encode()
+            second_encrypted_message = conn.recv(2048)
+            N2 = get_n2(second_encrypted_message).encode()
 
-            encryptedMessage3 = PUBLIC_KEY_B.encrypt(
-                n2,
-                padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                    algorithm=hashes.SHA256(),
-                    label=None
-                )
-            )
-            conn.send(encryptedMessage3)
+            third_encrypted_message = encrypt(N2, PUBLIC_KEY_B)
+            conn.send(third_encrypted_message)
 
             # STEP 4
-            ks = random.randint(0, 2**256 - 1)
             if conn.recv(2048).decode() == 'VERIFIED' :
-                ks_encrypted = custom_private_key_encrypt(ks, PRIVATE_KEY)
-                ks_encrypted = ks_encrypted.to_bytes(256, 'big')
+                key_secret = random.randint(0, 2**256 - 1)
+                key_secret_encrypted = custom_private_key_encrypt(key_secret, PRIVATE_KEY)
+                key_secret_encrypted_in_bytes = key_secret_encrypted.to_bytes(256, 'big')
 
-                ### implementasi symetric
-                key = os.urandom(AES.block_size)
-                iv = os.urandom(AES.block_size)
-                cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
-                encryptor = cipher.encryptor()
-                ct = encryptor.update(ks_encrypted) + encryptor.finalize()
-                ###
+                symmetric_content = encrypt_with_symmetric_key(key_secret_encrypted_in_bytes)
 
-                key_message = PUBLIC_KEY_B.encrypt(
-                    key,
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
-                iv_message = PUBLIC_KEY_B.encrypt(
-                    iv,
-                    padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                        algorithm=hashes.SHA256(),
-                        label=None
-                    )
-                )
+                key_message = encrypt(symmetric_content[0], PUBLIC_KEY_B)
+                iv_message = encrypt(symmetric_content[1], PUBLIC_KEY_B)
 
-                conn.send(ct)
+                conn.send(symmetric_content[2])
                 combined_message = b''.join([key_message,iv_message])
                 conn.send(combined_message)
 
