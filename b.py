@@ -52,10 +52,8 @@ def custom_public_key_decrypt(ks, KEY):
 
 def decrypt_with_symmetric_key(message):
     key_message = message[:256]
-    print("key message : ", key_message)
     key_message_decrypt = decrypt(key_message, PRIVATE_KEY)
     iv_message = message[256:]
-    print('iv message : ', iv_message)
     iv_message_decrypt = decrypt(iv_message, PRIVATE_KEY)
     cipher = Cipher(
         algorithms.AES(key_message_decrypt), 
@@ -133,18 +131,13 @@ def handle_client(conn, addr, client_id):
                 conn.send("VERIFIED".encode())
 
                 second_input = receive_input(conn)
-                print(second_input)
 
                 if "send" in second_input:
                     symmetric_content = conn.recv(2048)
-                    print("Ssymmetric_content : ", symmetric_content, len(symmetric_content))
                     key_and_iv_symmetric_content = symmetric_content[256:]
-                    print("key simetric : ", key_and_iv_symmetric_content, len(key_and_iv_symmetric_content))
                     decryptor = decrypt_with_symmetric_key(key_and_iv_symmetric_content)
-                    print("test")
 
                     key_secret_in_bytes = decryptor.update(symmetric_content[:256]) + decryptor.finalize()
-
                     key_secret_in_int = int.from_bytes(key_secret_in_bytes, 'big')
                     key_secret = custom_public_key_decrypt(key_secret_in_int, PUBLIC_KEY_A)
                     print(f"[RECV]    Key secret {key_secret} is received successfully\n")

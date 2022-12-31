@@ -140,22 +140,17 @@ if __name__ == '__main__':
                 conn.send(second_input.encode())
                 if 'send' in second_input:
                     key_secret = random.randint(0, 2**256 - 1)
-                    print("key secret : ", key_secret)
                     key_secret_encrypted = custom_private_key_encrypt(key_secret, PRIVATE_KEY)
                     key_secret_encrypted_in_bytes = key_secret_encrypted.to_bytes(256, 'big')
 
                     symmetric_content = encrypt_with_symmetric_key(key_secret_encrypted_in_bytes)
                     conn.send(symmetric_content[2])
-                    print(symmetric_content[2])
 
                     key_message = encrypt(symmetric_content[0], PUBLIC_KEY_B)
                     iv_message = encrypt(symmetric_content[1], PUBLIC_KEY_B)
-                    print("\nkey message : ", key_message)
-                    print("\niv message : ", iv_message)
 
                     combined_message = b''.join([key_message,iv_message])
                     conn.send(combined_message)
-                    print(combined_message)
 
                 elif 'quit' in second_input :
                     break
